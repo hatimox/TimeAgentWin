@@ -1,0 +1,74 @@
+# GitLab CI — build a distributable TimeAgent.exe whenever a tag is pushed.
+#
+# TimeAgent is a .NET 8 WPF (Windows-only) app, so the build job MUST run on a
+# Windows runner — WPF cannot be compiled on Linux. The job below uses the
+# PowerShell shell that GitLab's Windows runners run by default.
+#
+# Adjust `tags:` to match your runner:
+#   * self-hosted Windows shell runner   -> tags: [windows]   (and have the .NET 8 SDK installed)
+#   * GitLab.com SaaS Windows runners     -> tags: [saas-windows-medium-amd64]
+#
+# Result of a tagged pipeline:
+#   * job artifact:  dist/TimeAgent-<tag>.exe  (downloadable from the pipeline)
+#   * package:       Packages & Registries → generic package "timeagent/<tag>"
+#   * release:       Deployments → Releases, with a download link to the exe
+
+stages:
+  - build
+  - release
+
+variables:
+  PROJECT: "TimeAgent.csproj"
+  RUNTIME: "win-x64"
+  CONFIGURATION: "Release"
+
+build:exe:
+  stage: build
+  tags:
+    - windows                       # <-- change to your Windows runner's tag
+  rules:
+    - if: '$CI_COMMIT_TAG'          # only run for tag pipelines
+  script:
+    # version from the tag (strip a leading "v": v1.2.3 -> 1.2.3)
+    - '$ver = $env:CI_COMMIT_TAG.TrimStart("v")'
+    # ensure the .NET 8 SDK is available (no-op if the runner already has it)
+    - 'if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { choco install dotnet-8.0-sdk -y --no-progress }'
+    - 'dotnet --version'
+    # self-contained, single-file exe — runs on any Windows x64 with no .NET install.
+    # For a much smaller (~1 MB) exe that REQUIRES the .NET 8 Desktop Runtime on the
+    # target machine, drop --self-contained/PublishSingleFile and use: --no-self-contained
+    - 'dotnet publish $env:PROJECT -c $env:CONFIGURATION -r $env:RUNTIME --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$ver -o publish'
+    - 'New-Item -ItemType Directory -Force dist | Out-Null'
+    - 'Copy-Item publish/TimeAgent.exe "dist/TimeAgent-$($env:CI_COMMIT_TAG).exe"'
+    # upload to the project's generic package registry so the Release can link to it
+    - |
+      $pkgUrl = "$($env:CI_API_V4_URL)/projects/$($env:CI_PROJECT_ID)/packages/generic/timeagent/$($env:CI_COMMIT_TAG)/TimeAgent-$($env:CI_COMMIT_TAG).exe"
+      Invoke-RestMethod -Method Put -Headers @{ "JOB-TOKEN" = $env:CI_JOB_TOKEN } -InFile "dist/TimeAgent-$($env:CI_COMMIT_TAG).exe" -Uri $pkgUrl
+      Write-Output "Uploaded -> $pkgUrl"
+  artifacts:
+    name: "TimeAgent-$CI_COMMIT_TAG"
+    paths:
+      - "dist/*.exe"
+    expire_in: never
+
+# Creates a GitLab Release for the tag, linking the uploaded exe.
+# Requires a Linux/Docker runner (the release-cli image). If you only have a
+# Windows runner, delete this job — the exe is still available as the build
+# artifact and as a generic package.
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs: ["build:exe"]
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  script:
+    - echo "Releasing $CI_COMMIT_TAG"
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "TimeAgent $CI_COMMIT_TAG"
+    description: "Automated build of TimeAgent $CI_COMMIT_TAG."
+    assets:
+      links:
+        - name: "TimeAgent-$CI_COMMIT_TAG.exe (Windows x64, self-contained)"
+          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/timeagent/$CI_COMMIT_TAG/TimeAgent-$CI_COMMIT_TAG.exe"
+          link_type: "package"
