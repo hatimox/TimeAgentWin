@@ -38,6 +38,7 @@ Refresh, Quit).
 | `src/TasksWindow.cs`    | tasks/bugs window: search, filter, scope, status combo, US link, hours, direct log, edit/delete entries |
 | `src/SettingsWindow.cs` | settings tabs: account, meetings, recurring, days off |
 | `src/MeetingPrompt.cs`  | end-of-meeting dialog + task picker + defined-meeting picker |
+| `src/TrayPopup.cs`      | rich left-click tray popover (avatar, live meeting timer, Split/Stop, Today/Week cards, month navigator) — parity with the macOS/Linux ports |
 | `src/App.cs`            | WinForms NotifyIcon tray + WPF app host |
 
 ## IMPORTANT: unverified — build on Windows first
