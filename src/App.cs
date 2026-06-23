@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Reflection;
 using System.Windows;
 using WinForms = System.Windows.Forms;
 
@@ -9,7 +10,23 @@ namespace TimeAgent;
 /// meeting, plus Open tasks / Settings / Refresh / Quit.
 public class App : Application
 {
-    public const string Version = "0.0.4";
+    /// App version shown in the UI. Comes from the assembly's
+    /// InformationalVersion, which the CI sets from the git tag
+    /// (`dotnet publish -p:Version=<tag>`); falls back to the csproj <Version>.
+    public static string Version { get; } = ResolveVersion();
+
+    private static string ResolveVersion()
+    {
+        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        var info = asm.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrEmpty(info))
+        {
+            var plus = info.IndexOf('+');                 // strip SourceLink build metadata (e.g. 1.2.3+abc)
+            return plus >= 0 ? info[..plus] : info;
+        }
+        var v = asm.GetName().Version;
+        return v != null ? $"{v.Major}.{v.Minor}.{v.Build}" : "0.0.0";
+    }
 
     private WinForms.NotifyIcon _tray = null!;
     private System.Drawing.Icon _appIcon = null!;

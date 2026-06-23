@@ -12,6 +12,8 @@
     <AssemblyName>TimeAgent</AssemblyName>
     <RootNamespace>TimeAgent</RootNamespace>
     <ApplicationIcon>appicon.ico</ApplicationIcon>
+    <!-- Default version for local builds; CI overrides via -p:Version=<git tag>. -->
+    <Version>0.0.1</Version>
     <!-- DPI awareness (PerMonitorV2) is declared in app.manifest for WPF; the
          WinForms analyzer's request to move it to a project property doesn't
          apply here (no WinForms windows, only the tray icon). -->
