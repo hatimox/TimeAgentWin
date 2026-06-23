@@ -9,10 +9,13 @@ namespace TimeAgent;
 /// meeting, plus Open tasks / Settings / Refresh / Quit.
 public class App : Application
 {
+    public const string Version = "0.0.4";
+
     private WinForms.NotifyIcon _tray = null!;
     private AppStore _store = null!;
     private TasksWindow? _tasks;
     private SettingsWindow? _settings;
+    private TrayPopup? _popup;
 
     [STAThread]
     public static void Main()
@@ -39,10 +42,10 @@ public class App : Application
             });
 
         _store.Watcher.Start();
-        _ = Startup();
+        _ = RunStartup();
     }
 
-    private async Task Startup()
+    private async Task RunStartup()
     {
         await _store.EnsureUser();
         await _store.Refresh();
@@ -58,7 +61,7 @@ public class App : Application
             Visible = true,
             Text = "TimeAgent",
         };
-        _tray.MouseClick += (_, ev) => { if (ev.Button == WinForms.MouseButtons.Left) OpenTasks(); };
+        _tray.MouseClick += (_, ev) => { if (ev.Button == WinForms.MouseButtons.Left) TogglePopup(); };
         RebuildTrayMenu();
     }
 
@@ -84,6 +87,12 @@ public class App : Application
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => Quit());
         _tray.ContextMenuStrip = menu;
+    }
+
+    private void TogglePopup()
+    {
+        _popup ??= new TrayPopup(_store, OpenTasks, OpenSettings, () => _ = _store.Refresh(), Quit);
+        _popup.Toggle();
     }
 
     private void OpenTasks()

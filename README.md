@@ -35,7 +35,8 @@ Refresh, Quit).
 | `src/MeetingWatcher.cs` | async meeting loop + Split / Stop-tracking / bounded suppression |
 | `src/Holidays.cs`       | Morocco civil holidays + day-off check |
 | `src/AppStore.cs`       | shared state, all async TP ops, recurring auto-log, dispatcher marshalling |
-| `src/TasksWindow.cs`    | tasks/bugs window: search, filter, scope, status combo, US link, hours, direct log, edit/delete entries |
+| `src/TasksWindow.cs`    | tasks/bugs window: search, Active toggle, Sprint/Status/Sort filters, card rows, per-task Start/Stop stopwatch, status combo, US link, hours + inline edit/delete, direct log, Today/Week/Month totals footer |
+| `src/Ui.cs`             | shared WPF view helpers (colors, flat buttons, badges) for the popover + tasks window |
 | `src/SettingsWindow.cs` | settings tabs: account, meetings, recurring, days off |
 | `src/MeetingPrompt.cs`  | end-of-meeting dialog + task picker + defined-meeting picker |
 | `src/TrayPopup.cs`      | rich left-click tray popover (avatar, live meeting timer, Split/Stop, Today/Week cards, month navigator) — parity with the macOS/Linux ports |

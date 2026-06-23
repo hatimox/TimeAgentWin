@@ -19,6 +19,11 @@ public class AppStore
     public event Action? ItemsChanged;
     public event Action? TimesChanged;
     public event Action<string>? StatusChanged;
+    public event Action? TimerChanged;
+
+    // ---- manual per-task time tracking (Start/Stop stopwatch) ----
+    public long ActiveTimerTaskId { get; private set; }
+    public DateTime? ActiveTimerStart { get; private set; }   // local clock
 
     public readonly MeetingWatcher Watcher = new();
 
@@ -124,6 +129,28 @@ public class AppStore
             SetStatus($"#{item.Id} → {name}");
         }
         catch (Exception e) { SetStatus($"Status change failed: {e.Message}"); }
+    }
+
+    /// Begin (or switch) the manual stopwatch for a task. Starting a different
+    /// task while one runs stops + logs the previous one first.
+    public async Task StartTaskTimer(long taskId)
+    {
+        if (ActiveTimerStart != null && ActiveTimerTaskId != taskId) await StopTaskTimer();
+        ActiveTimerTaskId = taskId;
+        ActiveTimerStart = DateTime.Now;
+        Dispatch(() => TimerChanged?.Invoke());
+    }
+
+    /// Stop the manual stopwatch and log the elapsed time to its task.
+    public async Task StopTaskTimer()
+    {
+        if (ActiveTimerStart is not { } start || ActiveTimerTaskId == 0) return;
+        var taskId = ActiveTimerTaskId;
+        var hours = Math.Round((DateTime.Now - start).TotalHours, 2);
+        ActiveTimerTaskId = 0; ActiveTimerStart = null;
+        Dispatch(() => TimerChanged?.Invoke());
+        if (hours < 0.01) hours = 0.01;                 // never log a zero
+        await LogTime(taskId, hours, "", DateOnly.FromDateTime(start));
     }
 
     public double BillableHours(double raw)

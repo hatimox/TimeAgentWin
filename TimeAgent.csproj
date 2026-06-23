@@ -5,16 +5,30 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms> <!-- for NotifyIcon (system tray) -->
+    <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>TimeAgent</AssemblyName>
     <RootNamespace>TimeAgent</RootNamespace>
+    <!-- DPI awareness (PerMonitorV2) is declared in app.manifest for WPF; the
+         WinForms analyzer's request to move it to a project property doesn't
+         apply here (no WinForms windows, only the tray icon). -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- WASAPI / MMDevice mic detection without a PowerShell subprocess. -->
     <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WinForms/Drawing are only used for the tray NotifyIcon + SystemIcons,
+         always via explicit usings/aliases in App.cs. Drop the implicit global
+         usings so WPF types (Application, ComboBox, Brushes, Color…) resolve
+         unambiguously against System.Windows / System.Windows.Media. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
 </Project>
