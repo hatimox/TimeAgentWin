@@ -32,16 +32,26 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item publish/TimeAgent.exe "dist/TimeAgent-$tag.exe"
 
-      - name: Upload build artifact
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          if (-not ($ver -match '^[0-9]+(\.[0-9]+){0,3}$')) { $ver = '0.0.0' }
+          & $iscc "/DAppVersion=$ver" installer/TimeAgent.iss
+          Copy-Item "installer/TimeAgent-Setup-$ver.exe" dist/
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: TimeAgent-${{ github.ref_name }}
-          path: dist/*.exe
+          path: dist/*.exe        # raw exe + installer
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: TimeAgent ${{ github.ref_name }}
-          files: dist/TimeAgent-${{ github.ref_name }}.exe
+          files: dist/*.exe       # attaches both the portable exe and the installer
           generate_release_notes: true

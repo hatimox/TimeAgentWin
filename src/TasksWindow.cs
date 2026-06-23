@@ -37,6 +37,7 @@ public class TasksWindow : Window
         Title = "TimeAgent — Tasks";
         Width = 880; Height = 680;
         Background = B("#F2EEEA");
+        Icon = AppIcon;
 
         Content = BuildLayout();
 

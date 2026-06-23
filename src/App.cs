@@ -12,6 +12,7 @@ public class App : Application
     public const string Version = "0.0.4";
 
     private WinForms.NotifyIcon _tray = null!;
+    private System.Drawing.Icon _appIcon = null!;
     private AppStore _store = null!;
     private TasksWindow? _tasks;
     private SettingsWindow? _settings;
@@ -55,9 +56,10 @@ public class App : Application
 
     private void BuildTray()
     {
+        _appIcon = LoadAppIcon();
         _tray = new WinForms.NotifyIcon
         {
-            Icon = SystemIcons.Application, // TODO: bundle a proper icon
+            Icon = _appIcon,
             Visible = true,
             Text = "TimeAgent",
         };
@@ -67,9 +69,20 @@ public class App : Application
 
     private void UpdateTrayIcon(bool inMeeting)
     {
-        // Swap to a distinct icon during a meeting (placeholder uses system icons).
-        _tray.Icon = inMeeting ? SystemIcons.Exclamation : SystemIcons.Application;
+        // Keep the branded icon; the tooltip + popup convey the meeting state.
+        _tray.Icon = _appIcon;
         _tray.Text = inMeeting ? "TimeAgent — in meeting" : "TimeAgent";
+    }
+
+    private static System.Drawing.Icon LoadAppIcon()
+    {
+        try
+        {
+            var sri = GetResourceStream(new Uri("appicon.ico", UriKind.Relative));
+            if (sri != null) return new System.Drawing.Icon(sri.Stream, 32, 32);
+        }
+        catch { /* fall back below */ }
+        return SystemIcons.Application;
     }
 
     private void RebuildTrayMenu()
@@ -122,6 +135,7 @@ public class App : Application
         _store.Watcher.Stop();
         _tray.Visible = false;
         _tray.Dispose();
+        _appIcon.Dispose();
         Shutdown();
     }
 }

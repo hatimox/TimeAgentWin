@@ -15,7 +15,7 @@ public static class MeetingPrompt
         string win = $"{startUtc.ToLocalTime():HH:mm}-{endUtc.ToLocalTime():HH:mm}";
         bool hasDynamic = store.Settings.DynamicMeetings.Count > 0;
 
-        var dlg = new Window { Title = "Meeting ended", Width = 380, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterScreen, Topmost = true };
+        var dlg = new Window { Title = "Meeting ended", Width = 380, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterScreen, Topmost = true, Icon = Ui.AppIcon };
         var p = new StackPanel { Margin = new Thickness(14) };
         p.Children.Add(new TextBlock { Text = $"Meeting ended ({win}, {hours:0.00}h)", FontWeight = FontWeights.Bold });
         p.Children.Add(new TextBlock { Text = "How should this be logged?", Margin = new Thickness(0, 4, 0, 10) });
@@ -41,7 +41,7 @@ public static class MeetingPrompt
     private static void PickTask(AppStore store, double hours, DateOnly date)
     {
         var items = store.Items.Where(i => !i.IsFinal).ToList();
-        var dlg = new Window { Title = "Choose task", Width = 440, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterScreen, Topmost = true };
+        var dlg = new Window { Title = "Choose task", Width = 440, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterScreen, Topmost = true, Icon = Ui.AppIcon };
         var p = new StackPanel { Margin = new Thickness(14) };
         p.Children.Add(new TextBlock { Text = "Select the task to log this time to" });
         var combo = new ComboBox { Margin = new Thickness(0, 6, 0, 6) };
@@ -63,7 +63,7 @@ public static class MeetingPrompt
     private static void PickDefined(AppStore store, double hours, DateOnly date)
     {
         var meetings = store.Settings.DynamicMeetings;
-        var dlg = new Window { Title = "Select meeting", Width = 400, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterScreen, Topmost = true };
+        var dlg = new Window { Title = "Select meeting", Width = 400, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterScreen, Topmost = true, Icon = Ui.AppIcon };
         var p = new StackPanel { Margin = new Thickness(14) };
         var combo = new ComboBox { Margin = new Thickness(0, 0, 0, 6) };
         foreach (var m in meetings) combo.Items.Add($"{m.Name} (#{m.TaskId})");

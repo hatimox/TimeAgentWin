@@ -11,6 +11,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>TimeAgent</AssemblyName>
     <RootNamespace>TimeAgent</RootNamespace>
+    <ApplicationIcon>appicon.ico</ApplicationIcon>
     <!-- DPI awareness (PerMonitorV2) is declared in app.manifest for WPF; the
          WinForms analyzer's request to move it to a project property doesn't
          apply here (no WinForms windows, only the tray icon). -->
@@ -20,6 +21,13 @@
   <ItemGroup>
     <!-- WASAPI / MMDevice mic detection without a PowerShell subprocess. -->
     <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- App icon (converted from the macOS AppIcon.icns). Embedded as a WPF
+         resource so the tray NotifyIcon + window title bars can load it at
+         runtime; also set as the exe's Win32 icon via ApplicationIcon above. -->
+    <Resource Include="appicon.ico" />
   </ItemGroup>
 
   <ItemGroup>

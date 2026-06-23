@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace TimeAgent;
 
@@ -11,6 +12,12 @@ namespace TimeAgent;
 /// UI in code (no XAML), so these are the common primitives.
 public static class Ui
 {
+    private static ImageSource? _appIcon;
+
+    /// The app icon (clock/checkmark) for window title bars + taskbar.
+    public static ImageSource AppIcon =>
+        _appIcon ??= BitmapFrame.Create(new Uri("pack://application:,,,/TimeAgent;component/appicon.ico", UriKind.Absolute));
+
     public static SolidColorBrush B(string hex)
     {
         hex = hex.TrimStart('#');

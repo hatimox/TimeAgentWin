@@ -23,6 +23,7 @@ public class SettingsWindow : Window
         Title = "TimeAgent Settings";
         Width = 560; Height = 600;
         Background = B("#F2EEEA");
+        Icon = AppIcon;
 
         _tabs = new()
         {
