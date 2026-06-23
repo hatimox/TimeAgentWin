@@ -35,11 +35,29 @@ public class App : Application
     private SettingsWindow? _settings;
     private TrayPopup? _popup;
 
+    // ---- single-instance enforcement ----
+    private const string MutexName = "TimeAgent-SingleInstance-B64DF37A-A682-4350-A77D-CF8F0A9AB499";
+    private const string ShowEventName = "TimeAgent-Show-B64DF37A-A682-4350-A77D-CF8F0A9AB499";
+    private static Mutex? _mutex;
+    private EventWaitHandle? _showEvent;
+    private RegisteredWaitHandle? _showWait;
+
     [STAThread]
     public static void Main()
     {
+        // Single instance: the first launch owns the mutex; any later launch
+        // signals the running instance to surface its window, then exits.
+        _mutex = new Mutex(initiallyOwned: true, MutexName, out bool createdNew);
+        if (!createdNew)
+        {
+            try { if (EventWaitHandle.TryOpenExisting(ShowEventName, out var h)) { h.Set(); h.Dispose(); } }
+            catch { /* running instance may be mid-shutdown */ }
+            return;
+        }
+
         var app = new App();
         app.Run();
+        GC.KeepAlive(_mutex);
     }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -58,6 +76,11 @@ public class App : Application
                 MeetingPrompt.Present(_store, start, end);
                 _store.Watcher.ClearBusy();
             });
+
+        // Listen for "show" signals from launches that were blocked as duplicates.
+        _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        _showWait = ThreadPool.RegisterWaitForSingleObject(
+            _showEvent, (_, _) => Dispatcher.Invoke(OpenTasks), null, Timeout.Infinite, executeOnlyOnce: false);
 
         _store.Watcher.Start();
         _ = RunStartup();
@@ -133,6 +156,7 @@ public class App : Application
             _tasks.Closed += (_, _) => _tasks = null;
         }
         _tasks.Show();
+        if (_tasks.WindowState == WindowState.Minimized) _tasks.WindowState = WindowState.Normal;
         _tasks.Activate();
     }
 
@@ -150,9 +174,12 @@ public class App : Application
     private void Quit()
     {
         _store.Watcher.Stop();
+        _showWait?.Unregister(null);
+        _showEvent?.Dispose();
         _tray.Visible = false;
         _tray.Dispose();
         _appIcon.Dispose();
+        _mutex?.Dispose();
         Shutdown();
     }
 }
