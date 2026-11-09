@@ -9,6 +9,13 @@ namespace TimeAgent;
 /// Settings persisted as JSON under %APPDATA%\TimeAgent\settings.json (the same
 /// place the Electron app used on Windows). The token is NOT in the JSON; it's
 /// stored separately, encrypted per-user with DPAPI.
+public class ReligiousSlot
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = "";
+    [JsonPropertyName("date")] public string Date { get; set; } = "";
+    [JsonPropertyName("on")] public bool On { get; set; }
+}
+
 public class Settings
 {
     [JsonPropertyName("tpURL")] public string TpUrl { get; set; } = "";
@@ -30,6 +37,8 @@ public class Settings
     [JsonPropertyName("daysOff")] public List<string> DaysOff { get; set; } = new();
     [JsonPropertyName("weeklyOff")] public List<int> WeeklyOff { get; set; } = new() { 0, 6 };
     [JsonPropertyName("region")] public string Region { get; set; } = "none";
+    /// Per-day confirmation/adjustment of religious-holiday estimates (same shape as the Mac app).
+    [JsonPropertyName("religiousSlots")] public List<ReligiousSlot> ReligiousSlots { get; set; } = new();
 
     [JsonIgnore] public string Token { get; set; } = "";
 
