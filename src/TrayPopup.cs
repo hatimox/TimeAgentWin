@@ -16,10 +16,15 @@ public class TrayPopup : Window
 {
     private readonly AppStore _store;
     private readonly Action _openTasks, _openSettings, _refresh, _quit;
+    private readonly Action<int> _openDay;
     private readonly DispatcherTimer _ticker;
 
     // displayed month for the navigator (first of month)
     private DateOnly _month = FirstOfThisMonth();
+    // day / week steppers (0 = current period, -1 = previous, ...)
+    private int _dayOffset, _weekOffset;
+    private TextBlock _dayLabel = null!, _weekLabel = null!;
+    private Border _dayNext = null!, _weekNext = null!;
 
     // dynamic bits updated by the ticker / TimesChanged
     private TextBlock _statusText = null!, _todayVal = null!, _weekVal = null!, _monthVal = null!, _monthName = null!;
@@ -27,9 +32,9 @@ public class TrayPopup : Window
 
     private DateTime _lastHidden = DateTime.MinValue;
 
-    public TrayPopup(AppStore store, Action openTasks, Action openSettings, Action refresh, Action quit)
+    public TrayPopup(AppStore store, Action openTasks, Action openSettings, Action refresh, Action quit, Action<int> openDay)
     {
-        _store = store; _openTasks = openTasks; _openSettings = openSettings; _refresh = refresh; _quit = quit;
+        _store = store; _openTasks = openTasks; _openSettings = openSettings; _refresh = refresh; _quit = quit; _openDay = openDay;
 
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -55,6 +60,7 @@ public class TrayPopup : Window
         // swallow the immediate re-open so the click reads as "close".
         if ((DateTime.Now - _lastHidden).TotalMilliseconds < 250) return;
         _month = FirstOfThisMonth();
+        _dayOffset = 0; _weekOffset = 0;
         RefreshValues();
         Show();
         UpdateLayout();
@@ -122,8 +128,14 @@ public class TrayPopup : Window
         cards.ColumnDefinitions.Add(new ColumnDefinition());
         cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
         cards.ColumnDefinitions.Add(new ColumnDefinition());
-        var todayCard = Card("☀", "TODAY", "#FCEFE0", out _todayVal);
-        var weekCard = Card("\U0001F4C5", "WEEK", "#E8ECF4", out _weekVal);
+        var todayCard = StepCard("☀", "TODAY", "#FCEFE0", out _todayVal, out _dayLabel, out _dayNext,
+            () => { _dayOffset--; RefreshValues(); },
+            () => { if (_dayOffset < 0) { _dayOffset++; RefreshValues(); } },
+            () => { Hide(); _openDay(_dayOffset); });
+        var weekCard = StepCard("\U0001F4C5", "WEEK", "#E8ECF4", out _weekVal, out _weekLabel, out _weekNext,
+            () => { _weekOffset--; RefreshValues(); },
+            () => { if (_weekOffset < 0) { _weekOffset++; RefreshValues(); } },
+            null);
         Grid.SetColumn(todayCard, 0); Grid.SetColumn(weekCard, 2);
         cards.Children.Add(todayCard); cards.Children.Add(weekCard);
         col.Children.Add(cards);
@@ -203,13 +215,15 @@ public class TrayPopup : Window
             _statusText.Text = "Idle";
         }
 
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        int delta = ((int)today.DayOfWeek + 6) % 7;     // Monday = start of week
-        var weekStart = today.AddDays(-delta);
-        var weekEnd = weekStart.AddDays(6);
-
-        _todayVal.Text = $"{Sum(d => d == today):0.00}h";
-        _weekVal.Text = $"{Sum(d => d >= weekStart && d <= weekEnd):0.00}h";
+        int off = _store.Settings.TzOffsetMinutes();
+        var day = Totals.DayAt(_dayOffset, off);
+        var weekStart = Totals.WeekStart(_weekOffset, off);
+        _todayVal.Text = $"{Totals.HoursOn(_store.Times, day):0.00}h";
+        _dayLabel.Text = Totals.DayLabel(_dayOffset, off);
+        _dayNext.Opacity = _dayOffset < 0 ? 1 : 0.25;
+        _weekVal.Text = $"{Totals.HoursInWeek(_store.Times, weekStart):0.00}h";
+        _weekLabel.Text = Totals.WeekLabel(_weekOffset, off);
+        _weekNext.Opacity = _weekOffset < 0 ? 1 : 0.25;
         _monthVal.Text = $"{Sum(d => d.Year == _month.Year && d.Month == _month.Month):0.00}h";
         _monthName.Text = _month.ToString("MMMM yyyy");
 
@@ -239,15 +253,37 @@ public class TrayPopup : Window
 
     private static Border Dot(string hex) => new() { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Background = B(hex) };
 
-    private static Border Card(string glyph, string label, string bg, out TextBlock value)
+    /// Hours card with ‹ › steppers around the value and a period label below.
+    /// `onValueClick` (optional) makes the value itself clickable.
+    private static Border StepCard(string glyph, string title, string bg, out TextBlock value, out TextBlock label, out Border next,
+                                   Action onPrev, Action onNext, Action? onValueClick)
     {
         var p = new StackPanel();
         var top = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
         top.Children.Add(new TextBlock { Text = glyph, FontSize = 12, Margin = new Thickness(0, 0, 5, 0) });
-        top.Children.Add(new TextBlock { Text = label, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = B("#8A8A8A"), VerticalAlignment = VerticalAlignment.Center });
-        value = new TextBlock { Text = "0.00h", FontSize = 20, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0), Foreground = B("#1A1A1A") };
-        p.Children.Add(top); p.Children.Add(value);
-        return new Border { CornerRadius = new CornerRadius(10), Background = B(bg), Padding = new Thickness(10, 12, 10, 12), Child = p };
+        top.Children.Add(new TextBlock { Text = title, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = B("#8A8A8A"), VerticalAlignment = VerticalAlignment.Center });
+        p.Children.Add(top);
+
+        var row = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var prev = Clickable(new TextBlock { Text = "‹", FontSize = 16, Foreground = B("#555") }, onPrev, "#00FFFFFF", "#22000000", 6, new Thickness(5, 0, 5, 2));
+        next = Clickable(new TextBlock { Text = "›", FontSize = 16, Foreground = B("#555") }, onNext, "#00FFFFFF", "#22000000", 6, new Thickness(5, 0, 5, 2));
+        value = new TextBlock { Text = "0.00h", FontSize = 18, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Foreground = B("#1A1A1A") };
+        UIElement valueHost = value;
+        if (onValueClick != null)
+        {
+            value.Cursor = Cursors.Hand; value.ToolTip = "Show entries";
+            value.MouseLeftButtonUp += (_, _) => onValueClick();
+        }
+        Grid.SetColumn(prev, 0); Grid.SetColumn(valueHost, 1); Grid.SetColumn(next, 2);
+        row.Children.Add(prev); row.Children.Add(valueHost); row.Children.Add(next);
+        p.Children.Add(row);
+
+        label = new TextBlock { FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, Foreground = B("#8A8A8A"), Margin = new Thickness(0, 2, 0, 0) };
+        p.Children.Add(label);
+        return new Border { CornerRadius = new CornerRadius(10), Background = B(bg), Padding = new Thickness(6, 12, 6, 10), Child = p };
     }
 
     private static UIElement Centered(string glyph, string text)

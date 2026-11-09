@@ -20,6 +20,9 @@ public class Settings
     [JsonPropertyName("meetingsTaskId")] public long MeetingsTaskId { get; set; }
     [JsonPropertyName("meetingMinMinutes")] public int MeetingMinMinutes { get; set; } = 30;
     [JsonPropertyName("meetingStepMinutes")] public int MeetingStepMinutes { get; set; } = 15;
+    /// TP rejects time entries without a description; learned from the first
+    /// such rejection, or set by hand in Settings.
+    [JsonPropertyName("timeDescriptionRequired")] public bool TimeDescriptionRequired { get; set; }
     [JsonPropertyName("recurring")] public List<RecurringEntry> Recurring { get; set; } = new();
     [JsonPropertyName("dynamicMeetings")] public List<DynamicMeeting> DynamicMeetings { get; set; } = new();
     [JsonPropertyName("daysOff")] public List<string> DaysOff { get; set; } = new();

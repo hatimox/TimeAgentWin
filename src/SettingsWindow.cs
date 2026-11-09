@@ -107,6 +107,8 @@ public class SettingsWindow : Window
         var min = Tb(_store.Settings.MeetingMinMinutes.ToString());
         var step = Tb(_store.Settings.MeetingStepMinutes.ToString());
 
+        var descReq = new CheckBox { Content = "Description required", IsChecked = _store.Settings.TimeDescriptionRequired };
+
         var dynBox = new StackPanel();
         var rows = new List<(TextBox name, TextBox tid, DynamicMeeting m)>();
         void RenderDyn()
@@ -132,6 +134,7 @@ public class SettingsWindow : Window
             _store.Settings.MeetingsTaskId = long.TryParse(meet.Text, out var b) ? b : 0;
             _store.Settings.MeetingMinMinutes = int.TryParse(min.Text, out var c) ? c : 30;
             _store.Settings.MeetingStepMinutes = int.TryParse(step.Text, out var d) ? d : 15;
+            _store.Settings.TimeDescriptionRequired = descReq.IsChecked == true;
             _store.Settings.DynamicMeetings = rows
                 .Select(r => new DynamicMeeting { Id = r.m.Id, Name = r.name.Text, TaskId = long.TryParse(r.tid.Text, out var t) ? t : 0, Description = r.m.Description })
                 .Where(m => !string.IsNullOrWhiteSpace(m.Name) || m.TaskId != 0).ToList();
@@ -145,6 +148,8 @@ public class SettingsWindow : Window
                 Field("Min minutes", Shell(min, 120)),
                 Field("Step minutes", Shell(step, 120)),
                 Hint("Detected meetings round up to a multiple of the step, at least the minimum.")),
+            Card("Time entries", descReq,
+                Hint("Turns on automatically when TargetProcess rejects a time entry without a description.")),
             Card("Dynamic meeting shortcuts", dynBox, Row(add)),
             Row(save));
     }
