@@ -5,7 +5,7 @@ public static class Holidays
 {
     private static readonly (int m, int d)[] FixedCivil =
     {
-        (1, 1), (1, 11), (5, 1), (7, 30), (8, 14), (8, 20), (8, 21), (11, 6), (11, 18),
+        (1, 1), (1, 11), (1, 14), (5, 1), (7, 30), (8, 14), (8, 20), (8, 21), (11, 6), (11, 18),
     };
 
     /// Religious holiday ESTIMATES by year (YYYY-MM-DD). Moon-sighting dependent.
