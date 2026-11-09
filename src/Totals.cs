@@ -34,6 +34,36 @@ public static class Totals
         return times.Where(t => string.CompareOrdinal(t.Day, a) >= 0 && string.CompareOrdinal(t.Day, b) <= 0).Sum(t => t.Hours);
     }
 
+    /// Hours expected on the single day.
+    public static double DayTarget(Settings s, DateOnly day) => Target(s, day, 1);
+
+    /// Hours expected over the whole Monday–Sunday week starting at `start`.
+    public static double WeekTarget(Settings s, DateOnly start) => Target(s, start, 7);
+
+    /// Hours expected over the whole calendar month containing `anyDayInMonth`.
+    public static double MonthTarget(Settings s, DateOnly anyDayInMonth) =>
+        Target(s, new DateOnly(anyDayInMonth.Year, anyDayInMonth.Month, 1), DateTime.DaysInMonth(anyDayInMonth.Year, anyDayInMonth.Month));
+
+    /// hours-per-day × working days in start..start+days-1. A working day is not
+    /// a weekly day off (0=Sun…6=Sat), user day off or holiday. The days-off set
+    /// is cached per year for the duration of the call.
+    private static double Target(Settings s, DateOnly start, int days)
+    {
+        var perDay = Math.Max(0, s.HoursPerDay);
+        var offByYear = new Dictionary<int, HashSet<string>>();
+        int working = 0;
+        for (int i = 0; i < days; i++)
+        {
+            var d = start.AddDays(i);
+            if (s.WeeklyOff.Contains((int)d.DayOfWeek)) continue;
+            if (!offByYear.TryGetValue(d.Year, out var off))
+                offByYear[d.Year] = off = Holidays.DaysOffForYear(s, d.Year);
+            if (off.Contains(Key(d))) continue;
+            working++;
+        }
+        return perDay * working;
+    }
+
     public static string DayLabel(int offset, int tzOffMin) =>
         offset == 0 ? "Today" : offset == -1 ? "Yesterday" : DayAt(offset, tzOffMin).ToString("ddd d MMM", Inv);
 

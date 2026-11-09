@@ -218,13 +218,14 @@ public class TrayPopup : Window
         int off = _store.Settings.TzOffsetMinutes();
         var day = Totals.DayAt(_dayOffset, off);
         var weekStart = Totals.WeekStart(_weekOffset, off);
-        _todayVal.Text = $"{Totals.HoursOn(_store.Times, day):0.00}h";
+        var cfg = _store.Settings;
+        SetTarget(_todayVal, Totals.HoursOn(_store.Times, day), Totals.DayTarget(cfg, day), 15);
         _dayLabel.Text = Totals.DayLabel(_dayOffset, off);
         _dayNext.Opacity = _dayOffset < 0 ? 1 : 0.25;
-        _weekVal.Text = $"{Totals.HoursInWeek(_store.Times, weekStart):0.00}h";
+        SetTarget(_weekVal, Totals.HoursInWeek(_store.Times, weekStart), Totals.WeekTarget(cfg, weekStart), 15, "Days off");
         _weekLabel.Text = Totals.WeekLabel(_weekOffset, off);
         _weekNext.Opacity = _weekOffset < 0 ? 1 : 0.25;
-        _monthVal.Text = $"{Sum(d => d.Year == _month.Year && d.Month == _month.Month):0.00}h";
+        SetTarget(_monthVal, Sum(d => d.Year == _month.Year && d.Month == _month.Month), Totals.MonthTarget(cfg, _month), 22, "No working days");
         _monthName.Text = _month.ToString("MMMM yyyy");
 
         if (IsVisible) { UpdateLayout(); PositionBottomRight(); }

@@ -28,6 +28,38 @@ public static class Ui
         return new SolidColorBrush(Color.FromArgb(a, r, g, bl));
     }
 
+    /// Logged hours against a target, on one TextBlock: "32.00h / 40h" in green
+    /// once the target is met, red below it. Target 0 (no working days) shows
+    /// the hours in grey with " · {offLabel}". The font shrinks for longer text
+    /// so it fits the existing card widths.
+    public static void SetTarget(TextBlock tb, double value, double target, double baseSize, string offLabel = "Day off")
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var hours = value.ToString("0.00", inv) + "h";
+        string text, color, tip;
+        if (target <= 0)
+        {
+            text = $"{hours} · {offLabel}"; color = "#8A8A8A"; tip = "No working days in this period";
+        }
+        else
+        {
+            var t = TargetShort(target);
+            text = $"{hours} / {t}"; color = value >= target - 0.005 ? "#2E9E5B" : "#E5484D";
+            tip = $"{hours} logged of {t} expected";
+        }
+        tb.Text = text;
+        tb.Foreground = B(color);
+        tb.ToolTip = tip;
+        tb.FontSize = text.Length <= 13 ? baseSize : text.Length <= 17 ? baseSize * 0.8 : baseSize * 0.65;
+    }
+
+    /// "40h", or "37.5h" when the target isn't whole.
+    public static string TargetShort(double h)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        return Math.Abs(h - Math.Round(h)) < 1e-9 ? Math.Round(h).ToString("0", inv) + "h" : h.ToString("0.0", inv) + "h";
+    }
+
     /// A flat, rounded, hover-highlighting click target (we avoid Button chrome
     /// so corners/colors are fully under our control).
     public static Border Clickable(UIElement content, Action onClick, string baseBg, string hoverBg, double radius = 8, Thickness? pad = null)
