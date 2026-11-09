@@ -372,13 +372,16 @@ public class TasksWindow : Window
     private void RefreshTotals()
     {
         int off = _store.Settings.TzOffsetMinutes();
-        _todayVal.Text = $"{Totals.HoursOn(_store.Times, Totals.DayAt(_dayOffset, off)):0.00}h";
+        var cfg = _store.Settings;
+        var day = Totals.DayAt(_dayOffset, off);
+        var weekStart = Totals.WeekStart(_weekOffset, off);
+        SetTarget(_todayVal, Totals.HoursOn(_store.Times, day), Totals.DayTarget(cfg, day), 13, "off");
         _dayLabel.Text = Totals.DayLabel(_dayOffset, off);
         _dayNext.Opacity = _dayOffset < 0 ? 1 : 0.25;
-        _weekVal.Text = $"{Totals.HoursInWeek(_store.Times, Totals.WeekStart(_weekOffset, off)):0.00}h";
+        SetTarget(_weekVal, Totals.HoursInWeek(_store.Times, weekStart), Totals.WeekTarget(cfg, weekStart), 13, "off");
         _weekLabel.Text = Totals.WeekLabel(_weekOffset, off);
         _weekNext.Opacity = _weekOffset < 0 ? 1 : 0.25;
-        _monthVal.Text = $"{Sum(d => d.Year == _month.Year && d.Month == _month.Month):0.00}h";
+        SetTarget(_monthVal, Sum(d => d.Year == _month.Year && d.Month == _month.Month), Totals.MonthTarget(cfg, _month), 13, "off");
         _monthName.Text = _month.ToString("MMMM yyyy");
     }
 

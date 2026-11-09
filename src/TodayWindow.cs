@@ -69,7 +69,8 @@ public class TodayWindow : Window
         _title.Text = Totals.LongDayLabel(offset, off);
         _next.Opacity = offset < 0 ? 1 : 0.25;
         _todayBtn.Visibility = offset != 0 ? Visibility.Visible : Visibility.Collapsed;
-        _total.Text = $"{entries.Sum(t => t.Hours):0.00}h";
+        var dayDate = Totals.DayAt(offset, off);
+        SetTarget(_total, entries.Sum(t => t.Hours), Totals.DayTarget(_store.Settings, dayDate), 20);
 
         _list.Children.Clear();
         if (entries.Count == 0)

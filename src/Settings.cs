@@ -23,6 +23,8 @@ public class Settings
     /// TP rejects time entries without a description; learned from the first
     /// such rejection, or set by hand in Settings.
     [JsonPropertyName("timeDescriptionRequired")] public bool TimeDescriptionRequired { get; set; }
+    /// Hours expected per working day; drives the "x / y" targets on totals.
+    [JsonPropertyName("hoursPerDay")] public double HoursPerDay { get; set; } = 8;
     [JsonPropertyName("recurring")] public List<RecurringEntry> Recurring { get; set; } = new();
     [JsonPropertyName("dynamicMeetings")] public List<DynamicMeeting> DynamicMeetings { get; set; } = new();
     [JsonPropertyName("daysOff")] public List<string> DaysOff { get; set; } = new();
