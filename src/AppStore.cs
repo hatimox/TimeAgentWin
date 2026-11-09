@@ -15,6 +15,10 @@ public class AppStore
     public Dictionary<long, Dictionary<string, List<WorkflowState>>> States { get; } = new();
     public bool ScopeAll { get; set; }
     public string Status { get; private set; } = "";
+    /// Day shown in the day-entries window (0 = today, -1 = yesterday...).
+    public int ViewDayOffset { get; set; }
+
+    public const string DescriptionRequiredMessage = "TargetProcess requires a description for time entries.";
 
     public event Action? ItemsChanged;
     public event Action? TimesChanged;
@@ -37,6 +41,7 @@ public class AppStore
         Client = Settings.IsConfigured ? new TpClient(Settings.TpUrl, Settings.Token, Settings.MyUserId) : null;
 
     private void Dispatch(Action a) => Application.Current?.Dispatcher.Invoke(a);
+    public void NoteStatus(string s) => SetStatus(s);
     private void SetStatus(string s) { Status = s; Dispatch(() => StatusChanged?.Invoke(s)); }
 
     public async Task EnsureUser()
@@ -70,16 +75,35 @@ public class AppStore
 
     public double HoursFor(long itemId) => Times.Where(t => t.ItemId == itemId).Sum(t => t.Hours);
 
-    public async Task LogTime(long entityId, double hours, string description, DateOnly date)
+    /// Log a time entry. Returns null on success, or the error to show - callers
+    /// keep their form open until this returns null.
+    public async Task<string?> LogTime(long entityId, double hours, string description, DateOnly date)
     {
-        if (Client == null) return;
+        if (Client == null) { SetStatus("Not configured"); return "TargetProcess is not configured"; }
+        var desc = description.Trim();
+        if (Settings.TimeDescriptionRequired && desc.Length == 0) return DescriptionRequiredMessage;
         try
         {
-            await Client.LogTime(entityId, hours, description, date, Settings.TzOffsetMinutes());
+            await Client.LogTime(entityId, hours, desc, date, Settings.TzOffsetMinutes());
             SetStatus($"Logged {hours:0.00}h to #{entityId}");
             await ReloadTimes();
+            return null;
         }
-        catch (Exception e) { SetStatus($"Log failed: {e.Message}"); }
+        catch (Exception e)
+        {
+            var m = NoteDescriptionRequirement(e) ? DescriptionRequiredMessage : e.Message;
+            SetStatus($"Log failed: {m}");
+            return m;
+        }
+    }
+
+    /// If TP rejected a time entry for a missing description, remember that (so
+    /// every form asks for one from now on) and return true.
+    public bool NoteDescriptionRequirement(Exception e)
+    {
+        if (e is not TpException { Status: 400 } tp || tp.Message.IndexOf("description", StringComparison.OrdinalIgnoreCase) < 0) return false;
+        if (!Settings.TimeDescriptionRequired) { Settings.TimeDescriptionRequired = true; Settings.Save(); }
+        return true;
     }
 
     public async Task UpdateTime(long timeId, double hours, string description, string day)
@@ -87,7 +111,7 @@ public class AppStore
         if (Client == null) return;
         DateOnly? date = DateOnly.TryParse(day, out var d) ? d : null;
         try { await Client.UpdateTime(timeId, hours, description, date, Settings.TzOffsetMinutes()); SetStatus("Time entry updated"); await ReloadTimes(); }
-        catch (Exception e) { SetStatus($"Save failed: {e.Message}"); }
+        catch (Exception e) { SetStatus($"Save failed: {(NoteDescriptionRequirement(e) ? DescriptionRequiredMessage : e.Message)}"); }
     }
 
     public async Task DeleteTime(long timeId)
@@ -105,7 +129,7 @@ public class AppStore
 
     public async Task<List<WorkflowState>> StatesFor(WorkItem item)
     {
-        var key = item.EntityType == "Bugs" ? "Bug" : "Task";
+        var key = item.StateKey;
         if (States.TryGetValue(item.ProcessId, out var byproc) && byproc.TryGetValue(key, out var v)) return v;
         if (Client == null) return new();
         try
@@ -150,7 +174,18 @@ public class AppStore
         ActiveTimerTaskId = 0; ActiveTimerStart = null;
         Dispatch(() => TimerChanged?.Invoke());
         if (hours < 0.01) hours = 0.01;                 // never log a zero
-        await LogTime(taskId, hours, "", DateOnly.FromDateTime(start));
+        var date = DateOnly.FromDateTime(start);
+        // When a description is required, or the save fails, a dialog (prefilled
+        // with the task name) stays up until it saves or is explicitly discarded.
+        string? firstError = null;
+        if (!Settings.TimeDescriptionRequired)
+        {
+            firstError = await LogTime(taskId, hours, "", date);
+            if (firstError == null) return;
+        }
+        var name = Items.FirstOrDefault(i => i.Id == taskId)?.Name ?? $"#{taskId}";
+        LogPrompt.Run(this, $"Log {hours:0.00}h to “{name}”", hours, name, firstError,
+            (h, d) => LogTime(taskId, h, d, date));
     }
 
     public double BillableHours(double raw)
@@ -183,7 +218,11 @@ public class AppStore
             var k = $"{dayKey}|{r.Id}";
             if (logged.TryGetValue(k, out var done) && done) continue;
             logged[k] = true; changed = true;
-            try { await Client.LogTime(r.TaskId, r.Hours, "", today, Settings.TzOffsetMinutes()); } catch { }
+            // TP may require a description: use the label, else the task name.
+            var desc = !string.IsNullOrWhiteSpace(r.Label) ? r.Label
+                : Items.FirstOrDefault(i => i.Id == r.TaskId)?.Name ?? "Recurring time";
+            try { await Client.LogTime(r.TaskId, r.Hours, desc, today, Settings.TzOffsetMinutes()); }
+            catch (Exception e) { NoteDescriptionRequirement(e); }
         }
         if (changed) { try { File.WriteAllText(marker, JsonSerializer.Serialize(logged)); } catch { } await ReloadTimes(); }
     }

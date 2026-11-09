@@ -19,12 +19,17 @@ public class TasksWindow : Window
     private Border _activeChip = null!;
     private readonly ComboBox _sprint = new() { Width = 150, VerticalAlignment = VerticalAlignment.Center };
     private readonly ComboBox _statusFilter = new() { Width = 160, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ComboBox _typeFilter = new() { Width = 120, VerticalAlignment = VerticalAlignment.Center };
+    private readonly WrapPanel _summary = new() { Margin = new Thickness(0, 8, 0, 0) };
     private readonly ComboBox _sort = new() { Width = 150, VerticalAlignment = VerticalAlignment.Center };
 
     private readonly StackPanel _list = new();
     private readonly TextBlock _loaded = new() { Foreground = B("#8A8A8A"), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _shown = new() { Foreground = B("#8A8A8A"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
     private TextBlock _todayVal = null!, _weekVal = null!, _monthVal = null!, _monthName = null!;
+    private TextBlock _dayLabel = null!, _weekLabel = null!;
+    private Border _dayNext = null!, _weekNext = null!;
+    private int _dayOffset, _weekOffset;   // 0 = current, -1 = previous, ...
 
     private DateOnly _month = FirstOfThisMonth();
     private readonly DispatcherTimer _ticker;
@@ -43,6 +48,7 @@ public class TasksWindow : Window
 
         _search.TextChanged += (_, _) => Render();
         _statusFilter.SelectionChanged += (_, _) => Render();
+        _typeFilter.SelectionChanged += (_, _) => Render();
         _sort.SelectionChanged += (_, _) => Render();
         _sprint.SelectionChanged += async (_, _) =>
         {
@@ -120,7 +126,7 @@ public class TasksWindow : Window
         sg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         sg.ColumnDefinitions.Add(new ColumnDefinition());
         sg.Children.Add(new TextBlock { Text = "🔍", FontSize = 13, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = B("#9A938C") });
-        var sw = Watermark(_search, "Search tasks & bugs (name or #id)…");
+        var sw = Watermark(_search, "Search stories, tasks & bugs (name or #id)…");
         Grid.SetColumn(sw, 1); sg.Children.Add(sw);
         searchBorder.Child = sg;
         r1.Children.Add(searchBorder);
@@ -133,9 +139,13 @@ public class TasksWindow : Window
         _sort.ItemsSource = new[] { "Name A–Z", "Name Z–A", "Hours (high→low)", "# ID" };
         _sort.SelectedIndex = 0;
         r2.Children.Add(FilterLabel("⚑", "Sprint")); r2.Children.Add(_sprint);
+        _typeFilter.ItemsSource = new[] { "All types", "User Story", "Task", "Bug" };
+        _typeFilter.SelectedIndex = 0;
+        r2.Children.Add(FilterLabel("▦", "Type")); r2.Children.Add(_typeFilter);
         r2.Children.Add(FilterLabel("●", "Status")); r2.Children.Add(_statusFilter);
         r2.Children.Add(FilterLabel("↕", "Sort")); r2.Children.Add(_sort);
         wrap.Children.Add(r2);
+        wrap.Children.Add(_summary);
 
         return wrap;
     }
@@ -152,8 +162,12 @@ public class TasksWindow : Window
         grid.Children.Add(left);
 
         var right = new StackPanel { Orientation = Orientation.Horizontal };
-        right.Children.Add(Stat("Today", out _todayVal));
-        right.Children.Add(Stat("Week", out _weekVal));
+        right.Children.Add(Stepped(out _todayVal, out _dayLabel, out _dayNext,
+            () => { _dayOffset--; RefreshTotals(); },
+            () => { if (_dayOffset < 0) { _dayOffset++; RefreshTotals(); } }));
+        right.Children.Add(Stepped(out _weekVal, out _weekLabel, out _weekNext,
+            () => { _weekOffset--; RefreshTotals(); },
+            () => { if (_weekOffset < 0) { _weekOffset++; RefreshTotals(); } }));
 
         var nav = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         nav.Children.Add(Clickable(new TextBlock { Text = "‹", FontSize = 16, Foreground = B("#555") }, () => { _month = _month.AddMonths(-1); RefreshTotals(); }, "#00FFFFFF", "#22000000", 6, new Thickness(8, 2, 8, 2)));
@@ -182,6 +196,7 @@ public class TasksWindow : Window
         {
             if (_activeOnly && item.IsFinal) return false;
             if (statusF != "All statuses" && item.StateName != statusF) return false;
+            if (_typeFilter.SelectedItem is string tf && tf != "All types" && item.DisplayType != tf) return false;
             if (q.Length > 0 && !(item.Name.ToLowerInvariant().Contains(q) || item.Id.ToString().Contains(q))) return false;
             return true;
         });
@@ -198,6 +213,7 @@ public class TasksWindow : Window
         int shown = 0;
         foreach (var item in ordered) { _list.Children.Add(Row(item)); shown++; }
         _shown.Text = $"{shown} shown";
+        RenderSummary();
         if (string.IsNullOrEmpty(_loaded.Text)) _loaded.Text = _store.Status;
         RefreshTotals();
     }
@@ -205,7 +221,7 @@ public class TasksWindow : Window
     private Border Row(WorkItem item)
     {
         var box = new StackPanel();
-        bool isBug = item.EntityType == "Bugs";
+        bool isBug = item.IsBug;
 
         // line 1: badge + name ... start + hours
         var l1 = new Grid();
@@ -213,7 +229,7 @@ public class TasksWindow : Window
         l1.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        nameRow.Children.Add(Badge(isBug ? "BUG" : "TASK", isBug ? "#EF6C2F" : "#3B82F6"));
+        nameRow.Children.Add(Badge(item.DisplayType.ToUpperInvariant(), item.IsStory ? "#8B5CF6" : isBug ? "#EF6C2F" : "#3B82F6"));
         nameRow.Children.Add(new TextBlock { Text = item.Name, FontSize = 15, FontWeight = FontWeights.Bold, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 520, Foreground = B("#1A1A1A") });
         l1.Children.Add(nameRow);
 
@@ -235,7 +251,7 @@ public class TasksWindow : Window
         // line 2: id + US + status + project + sprint
         var l2 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         l2.Children.Add(Link($"#{item.Id}", () => _store.OpenInTp(item.Id)));
-        if (item.UsId != 0)
+        if (item.UsId != 0 && !item.IsStory)
         {
             var us = Link($"US #{item.UsId}", () => _store.OpenInTp(item.UsId));
             us.Foreground = B("#8A8A8A"); us.ToolTip = item.UsName;
@@ -262,17 +278,33 @@ public class TasksWindow : Window
         var hrs = new TextBox { Width = 56, VerticalAlignment = VerticalAlignment.Center };
         var date = new DatePicker { SelectedDate = DateTime.Today, Width = 130, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         var note = new TextBox { VerticalContentAlignment = VerticalAlignment.Center };
-        var noteWrap = new Border { Width = 360, Margin = new Thickness(8, 0, 0, 0), Child = Watermark(note, "Add a note…") };
-        var log = Clickable(IconText("＋", "Log", "#FFFFFF", 13, FontWeights.SemiBold), async () =>
+        var noteWrap = new Border { Width = 360, Margin = new Thickness(8, 0, 0, 0), Child = Watermark(note, _store.Settings.TimeDescriptionRequired ? "Description (required)" : "Add a note…") };
+        var err = new TextBlock { Foreground = B("#E5484D"), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
+        bool logging = false;
+        Border log = null!;
+        bool Disabled() => logging || (_store.Settings.TimeDescriptionRequired && string.IsNullOrWhiteSpace(note.Text));
+        void UpdateLog() => log.Opacity = Disabled() ? 0.45 : 1;
+        // Fields are cleared only once TP accepts the entry; on failure they stay
+        // filled and the error shows under the row.
+        log = Clickable(IconText("＋", "Log", "#FFFFFF", 13, FontWeights.SemiBold), async () =>
         {
-            if (!double.TryParse(hrs.Text.Replace(',', '.'), out var h) || h <= 0) return;
+            if (Disabled()) return;
+            if (!double.TryParse(hrs.Text.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var h) || h <= 0)
+            { err.Text = "Enter hours greater than 0."; err.Visibility = Visibility.Visible; return; }
             var d = DateOnly.FromDateTime(date.SelectedDate ?? DateTime.Today);
-            await _store.LogTime(item.Id, h, note.Text, d);
-            hrs.Text = ""; note.Text = "";
+            logging = true; UpdateLog(); err.Visibility = Visibility.Collapsed;
+            var e = await _store.LogTime(item.Id, h, note.Text, d);
+            logging = false;
+            if (e == null) { hrs.Text = ""; note.Text = ""; }
+            else { err.Text = "⚠ " + e; err.Visibility = Visibility.Visible; }
+            UpdateLog();
         }, "#3B82F6", "#2F6BFF", 8, new Thickness(14, 7, 14, 7));
+        note.TextChanged += (_, _) => UpdateLog();
+        UpdateLog();
         log.Margin = new Thickness(8, 0, 0, 0);
         l3.Children.Add(WrapInput(hrs, 56, "hrs")); l3.Children.Add(date); l3.Children.Add(noteWrap); l3.Children.Add(log);
         box.Children.Add(l3);
+        box.Children.Add(err);
 
         return new Border { Background = B("#FFFFFF"), BorderBrush = B("#E7E2DD"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(0, 0, 0, 10), Child = box };
     }
@@ -339,18 +371,45 @@ public class TasksWindow : Window
 
     private void RefreshTotals()
     {
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        int delta = ((int)today.DayOfWeek + 6) % 7;     // Monday = start of week
-        var weekStart = today.AddDays(-delta);
-        var weekEnd = weekStart.AddDays(6);
-        _todayVal.Text = $"{Sum(d => d == today):0.00}h";
-        _weekVal.Text = $"{Sum(d => d >= weekStart && d <= weekEnd):0.00}h";
+        int off = _store.Settings.TzOffsetMinutes();
+        _todayVal.Text = $"{Totals.HoursOn(_store.Times, Totals.DayAt(_dayOffset, off)):0.00}h";
+        _dayLabel.Text = Totals.DayLabel(_dayOffset, off);
+        _dayNext.Opacity = _dayOffset < 0 ? 1 : 0.25;
+        _weekVal.Text = $"{Totals.HoursInWeek(_store.Times, Totals.WeekStart(_weekOffset, off)):0.00}h";
+        _weekLabel.Text = Totals.WeekLabel(_weekOffset, off);
+        _weekNext.Opacity = _weekOffset < 0 ? 1 : 0.25;
         _monthVal.Text = $"{Sum(d => d.Year == _month.Year && d.Month == _month.Month):0.00}h";
         _monthName.Text = _month.ToString("MMMM yyyy");
     }
 
     private double Sum(Func<DateOnly, bool> pred) =>
         _store.Times.Where(t => DateOnly.TryParse(t.Day, out var d) && pred(d)).Sum(t => t.Hours);
+
+    /// Open/done counts per type and my hours for the selected sprint scope
+    /// (ignores the search, type, status and Active filters).
+    private void RenderSummary()
+    {
+        _summary.Children.Clear();
+        var scoped = _store.Items;
+        var hours = scoped.Sum(i => _store.HoursFor(i.Id));
+        var title = _store.ScopeAll ? "All sprints" : "Current sprint";
+        _summary.Children.Add(new TextBlock { Text = "⚑  " + title, FontWeight = FontWeights.SemiBold, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), Foreground = B("#1A1A1A") });
+        _summary.Children.Add(SummaryChip("User Stories", scoped.Where(i => i.IsStory).ToList(), "#8B5CF6"));
+        _summary.Children.Add(SummaryChip("Tasks", scoped.Where(i => !i.IsStory && !i.IsBug).ToList(), "#3B82F6"));
+        _summary.Children.Add(SummaryChip("Bugs", scoped.Where(i => i.IsBug).ToList(), "#E5484D"));
+        _summary.Children.Add(new TextBlock { Text = $"🕐 {hours:0.00}h logged", FontSize = 12, Foreground = B("#3FB870"), VerticalAlignment = VerticalAlignment.Center, ToolTip = "All time you logged on these items" });
+    }
+
+    private static UIElement SummaryChip(string label, List<WorkItem> items, string color)
+    {
+        int done = items.Count(i => i.IsFinal);
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        sp.Children.Add(new Border { Width = 7, Height = 7, CornerRadius = new CornerRadius(4), Background = B(color), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+        sp.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.Medium, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = $"{items.Count - done} open", FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = $" · {done} done", FontSize = 12, Foreground = B("#8A8A8A"), VerticalAlignment = VerticalAlignment.Center });
+        return new Border { CornerRadius = new CornerRadius(12), Background = B("#1A" + color.TrimStart('#')), Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 0, 8, 4), Child = sp, ToolTip = $"{items.Count} {label.ToLowerInvariant()} assigned to you" };
+    }
 
     private void UpdateStatusFilterOptions()
     {
@@ -384,6 +443,21 @@ public class TasksWindow : Window
         p.Children.Add(value);
         p.Children.Add(new TextBlock { Text = label, FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, Foreground = B("#8A8A8A") });
         return p;
+    }
+
+    /// A footer total with ‹ › around it to step its period back (never past the current one).
+    private static UIElement Stepped(out TextBlock value, out TextBlock label, out Border next, Action onPrev, Action onNext)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(Clickable(new TextBlock { Text = "‹", FontSize = 16, Foreground = B("#555") }, onPrev, "#00FFFFFF", "#22000000", 6, new Thickness(6, 2, 6, 2)));
+        value = new TextBlock { Text = "0.00h", FontSize = 15, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Foreground = B("#1A1A1A") };
+        label = new TextBlock { FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, Foreground = B("#8A8A8A") };
+        var center = new StackPanel { Margin = new Thickness(2, 0, 2, 0), MinWidth = 70 };
+        center.Children.Add(value); center.Children.Add(label);
+        row.Children.Add(center);
+        next = Clickable(new TextBlock { Text = "›", FontSize = 16, Foreground = B("#555") }, onNext, "#00FFFFFF", "#22000000", 6, new Thickness(6, 2, 6, 2));
+        row.Children.Add(next);
+        return row;
     }
 
     private static TextBlock Link(string text, Action onClick)

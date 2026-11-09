@@ -4,8 +4,8 @@ public record WorkItem
 {
     public long Id { get; init; }
     public string Name { get; set; } = "";
-    public string EntityType { get; init; } = "";   // "Tasks" | "Bugs"
-    public string DisplayType { get; init; } = "";   // "Task" | "Bug"
+    public string EntityType { get; init; } = "";   // "Tasks" | "Bugs" | "UserStories"
+    public string DisplayType { get; init; } = "";   // "Task" | "Bug" | "User Story"
     public long StateId { get; set; }
     public string StateName { get; set; } = "?";
     public bool IsFinal { get; set; }
@@ -14,6 +14,14 @@ public record WorkItem
     public string Sprint { get; init; } = "";
     public long UsId { get; init; }
     public string UsName { get; init; } = "";
+
+    public bool IsStory => EntityType == "UserStories";
+    public bool IsBug => EntityType == "Bugs";
+    /// Key into the per-process workflow-state map.
+    public string StateKey => IsStory ? "UserStory" : IsBug ? "Bug" : "Task";
+
+    public static string DisplayTypeFor(string collection) =>
+        collection switch { "Bugs" => "Bug", "UserStories" => "User Story", _ => "Task" };
 }
 
 public record TimeEntry

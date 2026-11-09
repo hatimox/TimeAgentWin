@@ -4,6 +4,13 @@ using System.Text.Json;
 
 namespace TimeAgent;
 
+/// A failed TP call: keeps the HTTP status so callers can react to a 400.
+public class TpException : Exception
+{
+    public int Status { get; }
+    public TpException(int status, string message) : base(message) { Status = status; }
+}
+
 /// TargetProcess REST client — faithful port of the Electron tpclient.js:
 /// noon-anchored writes, offset-aware day bucketing, manual %20 query encoding,
 /// skip-based pagination (TP caps a page at 1000).
@@ -58,16 +65,31 @@ public class TpClient
     private async Task Delete(string path)
     {
         using var resp = await Http.DeleteAsync(Url(path, Array.Empty<(string, string)>()));
-        if (!resp.IsSuccessStatusCode) throw new Exception($"HTTP {(int)resp.StatusCode}");
+        if (!resp.IsSuccessStatusCode) throw Failure((int)resp.StatusCode, await resp.Content.ReadAsStringAsync());
     }
 
     private static async Task<JsonElement> Parse(HttpResponseMessage resp)
     {
         var text = await resp.Content.ReadAsStringAsync();
-        if (!resp.IsSuccessStatusCode)
-            throw new Exception($"HTTP {(int)resp.StatusCode}: {text[..Math.Min(200, text.Length)]}");
+        if (!resp.IsSuccessStatusCode) throw Failure((int)resp.StatusCode, text);
         if (string.IsNullOrEmpty(text)) return JsonDocument.Parse("{}").RootElement;
         return JsonDocument.Parse(text).RootElement.Clone();
+    }
+
+    /// Prefer TP's own {"Message": ...} over the raw body.
+    private static TpException Failure(int status, string text)
+    {
+        string? msg = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("Message", out var m) && m.ValueKind == JsonValueKind.String)
+                msg = m.GetString();
+        }
+        catch { /* not JSON */ }
+        var detail = msg ?? text[..Math.Min(200, text.Length)];
+        return new TpException(status, $"HTTP {status}: {detail}");
     }
 
     private async Task<List<JsonElement>> GetAll(string path, params (string, string)[] query)
@@ -103,8 +125,9 @@ public class TpClient
     {
         var tasks = FetchCollection("Tasks", currentSprintOnly);
         var bugs = FetchCollection("Bugs", currentSprintOnly);
-        await Task.WhenAll(tasks, bugs);
-        var all = tasks.Result.Concat(bugs.Result).ToList();
+        var stories = FetchCollection("UserStories", currentSprintOnly);
+        await Task.WhenAll(tasks, bugs, stories);
+        var all = tasks.Result.Concat(bugs.Result).Concat(stories.Result).ToList();
         all.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
         return all;
     }
@@ -113,9 +136,12 @@ public class TpClient
     {
         var where = $"AssignedUser.Id eq {MyUserId}";
         if (currentSprintOnly) where += " and (TeamIteration.IsCurrent eq 'true')";
+        var isStory = collection == "UserStories";
+        // Stories have no parent UserStory field; asking for it fails the query.
+        var parent = isStory ? "" : ",UserStory[Id,Name]";
         var items = await GetAll(collection,
             ("where", where),
-            ("include", "[Id,Name,EntityState[Id,Name,IsFinal],Project[Name,Process[Id]],TeamIteration[Name],UserStory[Id,Name]]"));
+            ("include", $"[Id,Name,EntityState[Id,Name,IsFinal],Project[Name,Process[Id]],TeamIteration[Name]{parent}]"));
         var outv = new List<WorkItem>();
         foreach (var it in items)
         {
@@ -123,21 +149,26 @@ public class TpClient
             var es = Obj(it, "EntityState");
             var project = Obj(it, "Project");
             var process = Obj(project, "Process");
+            var id = idEl.GetInt64();
+            var name = Str(it, "Name");
             var us = Obj(it, "UserStory");
+            // A story is its own group, so it lists alongside its tasks.
+            var usId = isStory ? id : Long(us, "Id");
+            var usName = isStory ? name : Str(us, "Name");
             outv.Add(new WorkItem
             {
-                Id = idEl.GetInt64(),
-                Name = Str(it, "Name"),
+                Id = id,
+                Name = name,
                 EntityType = collection,
-                DisplayType = collection == "Bugs" ? "Bug" : "Task",
+                DisplayType = WorkItem.DisplayTypeFor(collection),
                 StateId = Long(es, "Id"),
                 StateName = Str(es, "Name", "?"),
                 IsFinal = Bool(es, "IsFinal"),
                 ProjectName = Str(project, "Name"),
                 ProcessId = Long(process, "Id"),
                 Sprint = Str(Obj(it, "TeamIteration"), "Name"),
-                UsId = Long(us, "Id"),
-                UsName = Str(us, "Name"),
+                UsId = usId,
+                UsName = usName,
             });
         }
         return outv;
@@ -145,9 +176,9 @@ public class TpClient
 
     public async Task<Dictionary<string, List<WorkflowState>>> FetchProcessStates(long processId)
     {
-        var outv = new Dictionary<string, List<WorkflowState>> { ["Task"] = new(), ["Bug"] = new() };
+        var outv = new Dictionary<string, List<WorkflowState>> { ["Task"] = new(), ["Bug"] = new(), ["UserStory"] = new() };
         if (processId == 0) return outv;
-        foreach (var etype in new[] { "Task", "Bug" })
+        foreach (var etype in new[] { "Task", "Bug", "UserStory" })
         {
             JsonElement obj;
             try

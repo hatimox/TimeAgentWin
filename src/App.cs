@@ -32,6 +32,7 @@ public class App : Application
     private System.Drawing.Icon _appIcon = null!;
     private AppStore _store = null!;
     private TasksWindow? _tasks;
+    private TodayWindow? _today;
     private SettingsWindow? _settings;
     private TrayPopup? _popup;
 
@@ -144,7 +145,7 @@ public class App : Application
 
     private void TogglePopup()
     {
-        _popup ??= new TrayPopup(_store, OpenTasks, OpenSettings, () => _ = _store.Refresh(), Quit);
+        _popup ??= new TrayPopup(_store, OpenTasks, OpenSettings, () => _ = _store.Refresh(), Quit, OpenDay);
         _popup.Toggle();
     }
 
@@ -158,6 +159,20 @@ public class App : Application
         _tasks.Show();
         if (_tasks.WindowState == WindowState.Minimized) _tasks.WindowState = WindowState.Normal;
         _tasks.Activate();
+    }
+
+    /// Open the day-entries window on a day (0 = today, -1 = yesterday...).
+    private void OpenDay(int offset)
+    {
+        if (_today == null || !_today.IsLoaded)
+        {
+            _today = new TodayWindow(_store);
+            _today.Closed += (_, _) => _today = null;
+        }
+        _today.ShowDay(offset);
+        _today.Show();
+        if (_today.WindowState == WindowState.Minimized) _today.WindowState = WindowState.Normal;
+        _today.Activate();
     }
 
     private void OpenSettings()
