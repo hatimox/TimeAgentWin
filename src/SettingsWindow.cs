@@ -233,8 +233,66 @@ public class SettingsWindow : Window
         addBtn.Margin = new Thickness(6, 0, 0, 0);
         addRow.Children.Add(newShell); addRow.Children.Add(addBtn);
 
+        // ---- Holidays (Morocco only) ----
+        var slots = _store.Settings.ReligiousSlots
+            .GroupBy(x => x.Key).Select(g => g.First())
+            .Select(x => new ReligiousSlot { Key = x.Key, Date = x.Date, On = x.On }).ToList();
+        int hYear = (DateTime.Today.Year >= 2026 && DateTime.Today.Year <= 2030) ? DateTime.Today.Year : 2026;
+        var holidayBox = new StackPanel();
+        var yearLabel = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, Width = 50, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        void RenderHolidays()
+        {
+            holidayBox.Children.Clear();
+            yearLabel.Text = hYear.ToString();
+            holidayBox.Children.Add(new TextBlock { Text = "Public holidays (fixed)", FontWeight = FontWeights.SemiBold, Foreground = B("#1A1A1A"), Margin = new Thickness(0, 8, 0, 2) });
+            foreach (var d in Holidays.FixedHolidays(hYear))
+                holidayBox.Children.Add(new TextBlock { Text = d, Foreground = B("#5B6470"), FontSize = 13, Margin = new Thickness(0, 1, 0, 0) });
+            holidayBox.Children.Add(new TextBlock { Text = "Religious holidays (estimates — confirm/adjust)", FontWeight = FontWeights.SemiBold, Foreground = B("#1A1A1A"), Margin = new Thickness(0, 12, 0, 2) });
+            var days = Holidays.ReligiousDays(hYear);
+            if (days.Count == 0)
+            {
+                holidayBox.Children.Add(new TextBlock { Text = $"No estimates for {hYear}. Add specific days off above.", Foreground = B("#9A938C"), FontSize = 12, TextWrapping = TextWrapping.Wrap });
+                return;
+            }
+            foreach (var day in days)
+            {
+                var d = day;
+                var slot = slots.FirstOrDefault(x => x.Key == d.Key);
+                bool on = slot?.On ?? true;
+                string date = !string.IsNullOrEmpty(slot?.Date) ? slot!.Date : d.Estimate;
+                ReligiousSlot Ensure()
+                {
+                    var sl = slots.FirstOrDefault(x => x.Key == d.Key);
+                    if (sl == null) { sl = new ReligiousSlot { Key = d.Key, Date = d.Estimate, On = true }; slots.Add(sl); }
+                    return sl;
+                }
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+                var cb = new CheckBox { IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+                cb.Click += (_, _) => Ensure().On = cb.IsChecked == true;
+                var tb = Tb(date);
+                tb.TextChanged += (_, _) => Ensure().Date = tb.Text.Trim();
+                row.Children.Add(cb);
+                row.Children.Add(new TextBlock { Text = d.Label, Width = 190, VerticalAlignment = VerticalAlignment.Center, Foreground = B("#5B6470"), FontSize = 13 });
+                row.Children.Add(WatermarkShell(tb, "YYYY-MM-DD", 130));
+                holidayBox.Children.Add(row);
+            }
+        }
+        RenderHolidays();
+        var yearPrev = SecondaryButton("◀", () => { if (hYear > 2026) { hYear--; RenderHolidays(); } });
+        var yearNext = SecondaryButton("▶", () => { if (hYear < 2030) { hYear++; RenderHolidays(); } });
+        var yearRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+        yearRow.Children.Add(new TextBlock { Text = "Holiday year", Width = 150, VerticalAlignment = VerticalAlignment.Center, Foreground = B("#5B6470"), FontSize = 13 });
+        yearRow.Children.Add(yearPrev); yearRow.Children.Add(yearLabel); yearRow.Children.Add(yearNext);
+        var holidayCard = Card("Holidays", yearRow, holidayBox);
+        void UpdateHolidayVisibility() => holidayCard.Visibility = region.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+        region.SelectionChanged += (_, _) => UpdateHolidayVisibility();
+        UpdateHolidayVisibility();
+
         var save = PrimaryButton("Save", () =>
         {
+            _store.Settings.ReligiousSlots = slots
+                .Where(x => string.IsNullOrEmpty(x.Date) || DateOnly.TryParse(x.Date, out _))
+                .Select(x => new ReligiousSlot { Key = x.Key, Date = x.Date, On = x.On }).ToList();
             _store.Settings.Region = region.SelectedIndex == 1 ? "morocco" : "none";
             _store.Settings.WeeklyOff = checks.Select((c, i) => (c, i)).Where(x => x.c.IsChecked == true).Select(x => x.i).ToList();
             _store.Settings.DaysOff = new List<string>(current);
@@ -247,6 +305,7 @@ public class SettingsWindow : Window
                 new TextBlock { Text = "Weekly off", Foreground = B("#5B6470"), Margin = new Thickness(0, 10, 0, 0) },
                 wk),
             Card("Specific days off", daysBox, addRow),
+            holidayCard,
             Row(save));
     }
 
